@@ -1,18 +1,23 @@
+# app/policy_engine.py
 from app.config import Config
 
 class PolicyEngine:
     @staticmethod
     def decide(injection_score: float, pii_results, policy: str):
-        # If injection is detected → always Block
+        """Decide action based on injection score, PII, and policy"""
+        
+        # Always block injection attempts
         if injection_score >= Config.INJECTION_THRESHOLD:
-            return "Block", "Injection detected"
+            return "Block", f"Injection detected (score: {injection_score:.2f})"
         
-        # If PII is found and policy is Mask or Block
-        if pii_results:  # pii_results list is not empty
+        # If PII detected, apply policy
+        if pii_results and len(pii_results) > 0:
             if policy == "Mask":
-                return "Mask", "PII masked"
-            if policy == "Block":
-                return "Block", "PII blocked"
+                return "Mask", f"PII detected, masking {len(pii_results)} entities"
+            elif policy == "Block":
+                return "Block", f"PII detected and policy is Block"
+            else:
+                return "Allow", "PII detected but policy is Allow"
         
-        # Everything is safe
-        return "Allow", "Safe"
+        # Everything safe
+        return "Allow", "Safe prompt"
