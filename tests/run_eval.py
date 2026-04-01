@@ -4,35 +4,52 @@ import time
 import csv
 import os
 import sys
+import json
+from datetime import datetime
 from test_cases import TEST_CASES
 
 URL = "http://127.0.0.1:8000/secure-llm"
 
-print("🚀 Starting evaluation... Make sure the server is running!\n")
+print("="*60)
+print("🚀 LLM Security Gateway - Evaluation Suite")
+print("="*60)
 
-# Make sure eval_results folder exists
-os.makedirs("../eval_results", exist_ok=True)
+# Get the absolute path to project root
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+eval_results_dir = os.path.join(project_root, "eval_results")
+
+# Create eval_results directory if it doesn't exist
+os.makedirs(eval_results_dir, exist_ok=True)
+print(f"📁 Results will be saved to: {eval_results_dir}\n")
 
 results = []
 success_count = 0
 fail_count = 0
 
 # Check if server is running first
+print("🔍 Checking server status...")
 try:
-    test_response = requests.get("http://127.0.0.1:8000/health", timeout=2)
-    print("✅ Server is running!\n")
-except:
-    print("❌ ERROR: Server is not running!")
-    print("Please start the server first with: uvicorn app.main:app --reload")
-    print("Then run this script again.")
+    test_response = requests.get("http://127.0.0.1:8000/health", timeout=5)
+    if test_response.status_code == 200:
+        print("✅ Server is running!\n")
+    else:
+        print(f"⚠️ Server returned status: {test_response.status_code}\n")
+except requests.exceptions.ConnectionError:
+    print("❌ ERROR: Cannot connect to server!")
+    print("\nPlease start the server first:")
+    print("1. Open a new terminal")
+    print("2. Navigate to project folder")
+    print("3. Run: python -m uvicorn app.main:app --reload")
+    print("\nThen run this script again.")
+    sys.exit(1)
+except Exception as e:
+    print(f"❌ ERROR: {e}")
     sys.exit(1)
 
+print("📊 Running test cases...\n")
+
 for case in TEST_CASES:
-    # Validate test case has required fields
-    if 'id' not in case or 'prompt' not in case or 'expected' not in case:
-        print(f"⚠️ Skipping invalid test case: {case}")
-        continue
-    
     start = time.perf_counter()
     
     try:
@@ -43,10 +60,10 @@ for case in TEST_CASES:
             data = response.json()
             action = data.get("status", "unknown")
             reason = data.get("reason", "")
+            injection_score = data.get("injection_score", 0)
+            pii_detected = data.get("pii_detected", 0)
             
             # Map action to expected format
-            # Server returns: "allowed", "blocked", "masked"
-            # Expected values: "Allow", "Block", "Mask"
             action_mapping = {
                 "allowed": "Allow",
                 "blocked": "Block",
@@ -54,8 +71,6 @@ for case in TEST_CASES:
             }
             
             mapped_action = action_mapping.get(action, action)
-            
-            # Compare mapped action with expected
             passed = (mapped_action == case["expected"])
             
             if passed:
@@ -68,64 +83,120 @@ for case in TEST_CASES:
                 "Scenario": case["name"],
                 "Input": case["prompt"][:80] + "..." if len(case["prompt"]) > 80 else case["prompt"],
                 "Action": mapped_action,
-                "Raw_Action": action,
                 "Reason": reason,
+                "Injection_Score": injection_score,
+                "PII_Detected": pii_detected,
                 "Latency_ms": round(latency, 2),
                 "Expected": case["expected"],
                 "Pass": "✅" if passed else "❌"
             }
             results.append(result)
             
+            # Print with color coding
             status_icon = "✅" if passed else "❌"
-            print(f"{status_icon} Test {case['id']}: {case['name']} → {mapped_action} ({round(latency, 2)}ms) | Expected: {case['expected']}")
+            print(f"{status_icon} Test {case['id']:2d}: {case['name']:25} → {mapped_action:6} "
+                  f"({round(latency, 2):4.1f}ms) | Expected: {case['expected']:5} | "
+                  f"Injection Score: {injection_score:.2f}")
             
         else:
             print(f"❌ Test {case['id']}: HTTP {response.status_code}")
-            result = {
-                "ID": case["id"],
-                "Scenario": case["name"],
-                "Input": case["prompt"][:80] + "...",
-                "Action": f"HTTP_{response.status_code}",
-                "Raw_Action": "error",
-                "Reason": "Server error",
-                "Latency_ms": round(latency, 2),
-                "Expected": case["expected"],
-                "Pass": "❌"
-            }
-            results.append(result)
             fail_count += 1
         
+    except requests.exceptions.Timeout:
+        print(f"❌ Test {case['id']}: TIMEOUT - Server took too long to respond")
+        fail_count += 1
+    except requests.exceptions.ConnectionError:
+        print(f"❌ Test {case['id']}: CONNECTION ERROR - Server may have stopped")
+        fail_count += 1
     except Exception as e:
-        print(f"❌ Test {case['id']}: FAILED - {str(e)}")
-        result = {
-            "ID": case["id"],
-            "Scenario": case["name"],
-            "Input": case["prompt"][:80] + "..." if len(case["prompt"]) > 80 else case["prompt"],
-            "Action": "ERROR",
-            "Raw_Action": "error",
-            "Reason": str(e),
-            "Latency_ms": 0,
-            "Expected": case.get("expected", "Unknown"),
-            "Pass": "❌"
-        }
-        results.append(result)
+        print(f"❌ Test {case['id']}: FAILED - {str(e)[:100]}")
         fail_count += 1
 
-# Save results to CSV if we have any
+# Save results to CSV and JSON
 if results:
-    csv_path = "../eval_results/evaluation_results.csv"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Save CSV
+    csv_path = os.path.join(eval_results_dir, f"evaluation_results_{timestamp}.csv")
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
         writer.writerows(results)
     
+    # Save JSON
+    json_path = os.path.join(eval_results_dir, f"evaluation_results_{timestamp}.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump({
+            "timestamp": timestamp,
+            "total_tests": len(results),
+            "passed": success_count,
+            "failed": fail_count,
+            "accuracy": round((success_count / len(results)) * 100, 2),
+            "results": results
+        }, f, indent=2, ensure_ascii=False)
+    
+    # Also save a latest copy
+    latest_csv = os.path.join(eval_results_dir, "latest_results.csv")
+    with open(latest_csv, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=results[0].keys())
+        writer.writeheader()
+        writer.writerows(results)
+    
+    latest_json = os.path.join(eval_results_dir, "latest_results.json")
+    with open(latest_json, "w", encoding="utf-8") as f:
+        json.dump({
+            "timestamp": timestamp,
+            "total_tests": len(results),
+            "passed": success_count,
+            "failed": fail_count,
+            "accuracy": round((success_count / len(results)) * 100, 2),
+            "results": results
+        }, f, indent=2, ensure_ascii=False)
+    
+    # Calculate metrics
+    tp = sum(1 for r in results if r["Expected"] == "Block" and r["Action"] == "Block")
+    tn = sum(1 for r in results if r["Expected"] == "Allow" and r["Action"] == "Allow")
+    fp = sum(1 for r in results if r["Expected"] == "Allow" and r["Action"] == "Block")
+    fn = sum(1 for r in results if r["Expected"] == "Block" and r["Action"] == "Allow")
+    
+    # Print summary
     print("\n" + "="*60)
-    print(f"📊 EVALUATION SUMMARY")
+    print("📊 EVALUATION SUMMARY")
     print("="*60)
-    print(f"Total Tests: {len(results)}")
-    print(f"✅ Passed: {success_count}")
-    print(f"❌ Failed: {fail_count}")
-    print(f"📁 Results saved to: {csv_path}")
+    print(f"Total Tests:        {len(results)}")
+    print(f"✅ Passed:           {success_count}")
+    print(f"❌ Failed:           {fail_count}")
+    print(f"📈 Accuracy:         {round((success_count/len(results))*100, 2)}%")
+    print("\n📊 Confusion Matrix Metrics:")
+    print(f"   True Positives:   {tp}")
+    print(f"   True Negatives:   {tn}")
+    print(f"   False Positives:  {fp}")
+    print(f"   False Negatives:  {fn}")
+    if tp + fp > 0:
+        precision = tp / (tp + fp) * 100
+        print(f"   Precision:        {precision:.1f}%")
+    if tp + fn > 0:
+        recall = tp / (tp + fn) * 100
+        print(f"   Recall:           {recall:.1f}%")
+    if tp + fp > 0 and tp + fn > 0:
+        f1 = 2 * (precision * recall) / (precision + recall)
+        print(f"   F1 Score:         {f1:.1f}%")
+    
+    print("\n📁 Results saved to:")
+    print(f"   CSV:  {csv_path}")
+    print(f"   JSON: {json_path}")
+    print(f"   Latest: {latest_csv}")
     print("="*60)
+    
+    # List all files in eval_results
+    print("\n📂 Files in eval_results folder:")
+    for file in os.listdir(eval_results_dir):
+        file_path = os.path.join(eval_results_dir, file)
+        size = os.path.getsize(file_path)
+        print(f"   📄 {file} ({size} bytes)")
+    
 else:
-    print("\n❌ No results were generated. Check your test cases.")
+    print("\n❌ No results were generated. Check server connection.")
+    print("Make sure the server is running at: http://127.0.0.1:8000")
+
+print("\n✨ Evaluation complete!")
