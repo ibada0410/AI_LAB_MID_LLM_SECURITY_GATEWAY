@@ -1,21 +1,17 @@
 # app/main.py
 from fastapi import FastAPI, Request, HTTPException
 from app.injection_detector import InjectionDetector
-from app.presidio_handler import CustomPresidio
 from app.config import Config
 import time
 import traceback
+import re
 
-# Create FastAPI app
 app = FastAPI(title="LLM Security Gateway")
 
-# Load configuration
 print("🚀 Starting LLM Security Gateway...")
 Config.load()
 
-# Initialize components
 detector = InjectionDetector()
-presidio = CustomPresidio()
 
 @app.get("/")
 async def root():
@@ -38,12 +34,94 @@ async def health():
         }
     }
 
+def detect_pii(text: str):
+    """Direct PII detection using regex"""
+    from presidio_analyzer import RecognizerResult
+    results = []
+    
+    print(f"🔍 Running PII detection on: {text[:80]}...")
+    
+    # Phone numbers
+    phone_patterns = [
+        r"03[0-9]{2}[- ]?[0-9]{7}",
+        r"03[0-9]{9}",
+        r"\+92[0-9]{10}",
+    ]
+    for pattern in phone_patterns:
+        for match in re.finditer(pattern, text):
+            results.append(RecognizerResult(
+                entity_type="PHONE_NUMBER",
+                start=match.start(),
+                end=match.end(),
+                score=0.85
+            ))
+            print(f"  ✅ Found PHONE: {match.group()}")
+    
+    # Emails
+    email_pattern = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    for match in re.finditer(email_pattern, text):
+        results.append(RecognizerResult(
+            entity_type="EMAIL",
+            start=match.start(),
+            end=match.end(),
+            score=0.95
+        ))
+        print(f"  ✅ Found EMAIL: {match.group()}")
+    
+    # API Keys - Broad patterns
+    api_patterns = [
+        r"sk-[a-zA-Z0-9]{20,}",      # sk- with at least 20 chars
+        r"pk-[a-zA-Z0-9]{20,}",      # pk- with at least 20 chars
+        r"sk-proj-[a-zA-Z0-9]{20,}", # sk-proj- format
+        r"[A-Za-z0-9]{32,}",         # Any 32+ char alphanumeric string
+    ]
+    for pattern in api_patterns:
+        for match in re.finditer(pattern, text):
+            # Only add if it's reasonably long (likely a key)
+            if len(match.group()) >= 25:
+                # Avoid matching regular words
+                if not match.group().isalpha():
+                    results.append(RecognizerResult(
+                        entity_type="API_KEY",
+                        start=match.start(),
+                        end=match.end(),
+                        score=0.85
+                    ))
+                    print(f"  ✅ Found API_KEY: {match.group()[:30]}...")
+    
+    # Internal IDs
+    id_patterns = [r"STU-[0-9]{6}", r"HOG-[0-9]{6}", r"EMP-[0-9]{4}"]
+    for pattern in id_patterns:
+        for match in re.finditer(pattern, text):
+            results.append(RecognizerResult(
+                entity_type="INTERNAL_ID",
+                start=match.start(),
+                end=match.end(),
+                score=0.80
+            ))
+            print(f"  ✅ Found ID: {match.group()}")
+    
+    print(f"  📊 Total PII found: {len(results)}")
+    return results
+
+def anonymize_text(text: str, results):
+    """Simple anonymization"""
+    if not results:
+        return text
+    
+    # Sort by start position in reverse to not mess up indices
+    sorted_results = sorted(results, key=lambda x: x.start, reverse=True)
+    new_text = text
+    for r in sorted_results:
+        replacement = "*" * (r.end - r.start)
+        new_text = new_text[:r.start] + replacement + new_text[r.end:]
+    return new_text
+
 @app.post("/secure-llm")
 async def secure_llm(request: Request):
     start_total = time.perf_counter()
     
     try:
-        # Get user input
         data = await request.json()
         user_input = data.get("prompt", "")
         
@@ -55,86 +133,73 @@ async def secure_llm(request: Request):
         injection_score, inj_verdict = detector.calculate_score(user_input)
         inj_latency = (time.perf_counter() - inj_start) * 1000
         
-        # 2. Presidio Analyzer (PII Detection)
+        # 2. PII Detection
         pres_start = time.perf_counter()
-        pii_results = presidio.analyze(user_input)
+        pii_results = detect_pii(user_input)
         pres_latency = (time.perf_counter() - pres_start) * 1000
         
         # 3. Policy Decision
         policy_start = time.perf_counter()
         
-        # Check injection first - if injection detected, always block
+        print(f"🔍 DEBUG: Score={injection_score}, Threshold={Config.INJECTION_THRESHOLD}, PII_Count={len(pii_results)}, Policy={Config.POLICY}")
+        
         if injection_score >= Config.INJECTION_THRESHOLD:
             action = "Block"
             reason = f"Injection detected (score: {injection_score:.2f})"
-        
-        # Check PII if no injection
         elif pii_results and len(pii_results) > 0:
-            # Get policy from config (Allow, Mask, or Block)
+            print(f"🔍 DEBUG: Entering PII branch! Policy={Config.POLICY}")
             if Config.POLICY == "Mask":
                 action = "Mask"
                 reason = f"PII detected: {len(pii_results)} entities found"
             elif Config.POLICY == "Block":
                 action = "Block"
-                reason = f"PII detected and policy is Block"
-            else:  # Allow
+                reason = "PII detected and policy is Block"
+            else:
                 action = "Allow"
-                reason = "PII detected but policy is Allow (not blocking/masking)"
-        
-        # No injection, no PII - safe prompt
+                reason = f"PII detected but policy is {Config.POLICY} (not Mask/Block)"
         else:
             action = "Allow"
             reason = "Safe prompt"
         
         policy_latency = (time.perf_counter() - policy_start) * 1000
-        
-        # 4. Prepare Final Output
         total_latency = (time.perf_counter() - start_total) * 1000
         
-        # Build response based on action
+        # Build response
         if action == "Block":
             output = {
                 "status": "blocked",
                 "reason": reason,
                 "injection_score": round(injection_score, 2),
-                "pii_detected": len(pii_results) if pii_results else 0,
-                "latency_ms": round(total_latency, 2),
-                "original_prompt": user_input
+                "pii_detected": len(pii_results),
+                "latency_ms": round(total_latency, 2)
             }
-            
         elif action == "Mask":
-            # Anonymize the PII
-            anonymized_result = presidio.anonymize(user_input, pii_results)
+            processed_prompt = anonymize_text(user_input, pii_results)
             output = {
                 "status": "masked",
                 "original_prompt": user_input,
-                "processed_prompt": anonymized_result.text,
+                "processed_prompt": processed_prompt,
                 "reason": reason,
                 "injection_score": round(injection_score, 2),
                 "pii_detected": len(pii_results),
-                "pii_entities": [r.entity_type for r in pii_results],
                 "latency_ms": round(total_latency, 2)
             }
-            
-        else:  # Allow
+        else:
             output = {
                 "status": "allowed",
                 "processed_prompt": user_input,
                 "reason": reason,
                 "injection_score": round(injection_score, 2),
-                "pii_detected": len(pii_results) if pii_results else 0,
+                "pii_detected": len(pii_results),
                 "latency_ms": round(total_latency, 2)
             }
         
-        # Print latency for debugging (useful for your Latency Table)
-        print(f"📊 Latency - Total: {total_latency:.2f}ms | Injection: {inj_latency:.2f}ms | Presidio: {pres_latency:.2f}ms | Policy: {policy_latency:.2f}ms")
-        print(f"📋 Decision: {action} | Score: {injection_score:.2f} | PII: {len(pii_results) if pii_results else 0}")
-        
+        print(f"📊 FINAL: action={action}, reason={reason}")
         return output
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error processing request: {e}")
+        print(f"❌ Error: {e}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
