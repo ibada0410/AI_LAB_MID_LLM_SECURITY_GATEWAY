@@ -5,7 +5,6 @@ import csv
 import os
 import sys
 import json
-from datetime import datetime
 from test_cases import TEST_CASES
 
 URL = "http://127.0.0.1:8000/secure-llm"
@@ -88,7 +87,7 @@ for case in TEST_CASES:
                 "PII_Detected": pii_detected,
                 "Latency_ms": round(latency, 2),
                 "Expected": case["expected"],
-                "Pass": "✅" if passed else "❌"
+                "Pass": "Yes" if passed else "No"
             }
             results.append(result)
             
@@ -112,40 +111,19 @@ for case in TEST_CASES:
         print(f"❌ Test {case['id']}: FAILED - {str(e)[:100]}")
         fail_count += 1
 
-# Save results to CSV and JSON
+# Save results to CSV and JSON (OVERWRITE - no timestamps)
 if results:
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # Save CSV
-    csv_path = os.path.join(eval_results_dir, f"evaluation_results_{timestamp}.csv")
+    # Save CSV (overwrite)
+    csv_path = os.path.join(eval_results_dir, "evaluation_results.csv")
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=results[0].keys())
         writer.writeheader()
         writer.writerows(results)
     
-    # Save JSON
-    json_path = os.path.join(eval_results_dir, f"evaluation_results_{timestamp}.json")
+    # Save JSON (overwrite)
+    json_path = os.path.join(eval_results_dir, "evaluation_results.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump({
-            "timestamp": timestamp,
-            "total_tests": len(results),
-            "passed": success_count,
-            "failed": fail_count,
-            "accuracy": round((success_count / len(results)) * 100, 2),
-            "results": results
-        }, f, indent=2, ensure_ascii=False)
-    
-    # Also save a latest copy
-    latest_csv = os.path.join(eval_results_dir, "latest_results.csv")
-    with open(latest_csv, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=results[0].keys())
-        writer.writeheader()
-        writer.writerows(results)
-    
-    latest_json = os.path.join(eval_results_dir, "latest_results.json")
-    with open(latest_json, "w", encoding="utf-8") as f:
-        json.dump({
-            "timestamp": timestamp,
             "total_tests": len(results),
             "passed": success_count,
             "failed": fail_count,
@@ -155,7 +133,7 @@ if results:
     
     # Calculate metrics
     tp = sum(1 for r in results if r["Expected"] == "Block" and r["Action"] == "Block")
-    tn = sum(1 for r in results if r["Expected"] == "Allow" and r["Action"] == "Allow")
+    tn = sum(1 for r in results if r["Expected"] != "Block" and r["Action"] != "Block")
     fp = sum(1 for r in results if r["Expected"] == "Allow" and r["Action"] == "Block")
     fn = sum(1 for r in results if r["Expected"] == "Block" and r["Action"] == "Allow")
     
@@ -185,7 +163,6 @@ if results:
     print("\n📁 Results saved to:")
     print(f"   CSV:  {csv_path}")
     print(f"   JSON: {json_path}")
-    print(f"   Latest: {latest_csv}")
     print("="*60)
     
     # List all files in eval_results
