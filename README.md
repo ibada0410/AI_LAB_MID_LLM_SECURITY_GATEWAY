@@ -1,4 +1,4 @@
-**Submitted for CSC 262 Lab Mid**
+# **Submitted for CSC 262 Lab Mid**
 
 **Project Title :** LLM Security Gateway
 
@@ -12,13 +12,15 @@
 
 
 
+### **Introduction**
+
 
 
 A security gateway that protects Large Language Models (LLMs) from \*\*prompt injection attacks\*\* and automatically \*\*masks Personally Identifiable Information (PII)\*\* such as phone numbers, emails, API keys, and IDs. This project ensures that LLMs can be safely deployed in sensitive environments while maintaining privacy and security.
 
 
 
-**Prerequisites**
+### **Prerequisites**
 
 
 
@@ -26,19 +28,19 @@ Before running this project, make sure you have:
 
 
 
-\- \*\*Python 3.8 or higher\*\*  
+\- \*\*Python 3.8 or higher\*\*
 
-\- \*\*pip\*\* package manager installed  
+\- \*\*pip\*\* package manager installed
 
-\- Windows, macOS, or Linux operating system  
-
-
-
-**Installation** 
+\- Windows, macOS, or Linux operating system
 
 
 
-**Step 1: Clone or download the repository**
+### **Installation**
+
+
+
+#### **Step 1: Clone or download the repository**
 
 
 
@@ -48,7 +50,7 @@ cd llm-security-gateway
 
 
 
-**Step 2: Create a virtual environment**
+#### **Step 2: Create a virtual environment**
 
 
 
@@ -70,9 +72,9 @@ python3 -m venv venv
 
 source venv/bin/activate
 
+#### 
 
-
-**Step 3: Install dependencies**
+#### **Step 3: Install dependencies**
 
 
 
@@ -80,7 +82,7 @@ pip install -r requirements.txt
 
 
 
-**Step 4: Download spaCy model**
+#### **Step 4: Download spaCy model**
 
 
 
@@ -88,7 +90,7 @@ python -m spacy download en\_core\_web\_sm
 
 
 
-**Step 5: Verify installation**
+#### **Step 5: Verify installation**
 
 
 
@@ -96,11 +98,11 @@ python -c "import presidio\_analyzer; print('✅ Installation successful')"
 
 
 
-**Running the Gateway**
+### **Running the Gateway**
 
 
 
-**Start the FastAPI server:**
+#### **Start the FastAPI server:**
 
 
 
@@ -108,9 +110,9 @@ python -m uvicorn app.main:app --reload
 
 The server runs at: http://127.0.0.1:8000
 
+#### 
 
-
-**Testing the Gateway**
+#### **Testing the Gateway**
 
 
 
@@ -158,11 +160,11 @@ python -m uvicorn app.main:app --reload
 
 
 
-**Step 2: Run tests (Terminal 2)**
+### **Step 2: Run tests (Terminal 2)**
 
 
 
-**Open a new terminal:**
+#### **Open a new terminal:**
 
 
 
@@ -176,7 +178,7 @@ python run\_eval.py
 
 
 
-**Step 3: View results**
+### **Step 3: View results**
 
 
 
@@ -190,7 +192,7 @@ evaluation\_results\_\[timestamp].csv → **archived results**
 
 
 
-**Expected Output**
+### **Expected Output**
 
 
 
@@ -226,7 +228,7 @@ TOTAL              22     22       100%
 
 
 
-**Configuration**
+### **Configuration**
 
 
 
@@ -274,7 +276,7 @@ llm-security-gateway/
 
 
 
-**Troubleshooting**
+### **Troubleshooting**
 
 
 
@@ -292,7 +294,7 @@ venv not activating	Use venv\\Scripts\\activate.bat on Windows
 
 
 
-**Summary**
+### **Summary**
 
 
 
