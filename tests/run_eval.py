@@ -182,6 +182,7 @@ try:
     dashboard_path = generate_dashboard(latest_csv, latest_csv)
     print(f"📊 Dashboard generated: {dashboard_path}")
 except Exception as e:
-    print(f"⚠️ Could not generate dashboard: {e}")
+    print(f"⚠️ Could  not generate dashboard: {e}")
 
-print("\n✨ Evaluation complete!")
+
+print("\n✨ Evaluation complete!") 
