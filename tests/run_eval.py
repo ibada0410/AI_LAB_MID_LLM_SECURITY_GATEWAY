@@ -176,4 +176,12 @@ else:
     print("\n❌ No results were generated. Check server connection.")
     print("Make sure the server is running at: http://127.0.0.1:8000")
 
+# After saving results, generate dashboard
+try:
+    from generate_dashboard import generate_dashboard
+    dashboard_path = generate_dashboard(latest_csv, latest_csv)
+    print(f"📊 Dashboard generated: {dashboard_path}")
+except Exception as e:
+    print(f"⚠️ Could not generate dashboard: {e}")
+
 print("\n✨ Evaluation complete!")
