@@ -222,7 +222,7 @@ Injection Attacks   8      8       100%
 
 PII Detection       6      6       100%
 
-TOTAL              22     22       100%
+TOTAL              20     20       100%
 
 ===========================================================================
 
@@ -264,7 +264,7 @@ llm-security-gateway/
 
 ├── tests/                   # Test suite
 
-│   ├── test\_cases.py        # 22 test scenarios
+│   ├── test\_cases.py        # 20 test scenarios
 
 │   └── run\_eval.py          # Runs evaluations
 
