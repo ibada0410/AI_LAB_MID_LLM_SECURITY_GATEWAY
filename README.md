@@ -178,8 +178,8 @@ Average Latency:   15.2ms
 
 | Category          | Tests | Passed | Success Rate |
 |-------------------|:-----:|:------:|:------------:|
-| Safe Prompts      |   8   |   8    |    100%      |
-| Injection Attacks |   8   |   8    |    100%      |
+| Safe Prompts      |   7   |   7    |    100%      |
+| Injection Attacks |   7   |   7    |    100%      |
 | PII Detection     |   6   |   6    |    100%      |
 | **TOTAL**         | **20**| **20** |  **100%**    |
 
